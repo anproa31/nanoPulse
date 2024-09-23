@@ -25,9 +25,9 @@ Pulse pulseRed;
 MAFilter bpm;
 
 
-String WIFI_SSID = "502B";          // WIFI NAME
-String WIFI_PASS = "110818032003";  // WIFI PASSWORD
-String API = "FSU5RZINS9Q9OZID";    // Write API KEY
+String WIFI_SSID = "";          // WIFI NAME
+String WIFI_PASS = "";  // WIFI PASSWORD
+String API = "************";    // Write API KEY
 String HOST = "api.thingspeak.com";
 String PORT = "80";
 int countTrueCommand;
