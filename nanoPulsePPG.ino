@@ -14,35 +14,15 @@
 #define sbi(sfr, bit) (_SFR_BYTE(sfr) |= _BV(bit))
 #endif
 
-#define RX 10  // TX of esp8266 in connected with Arduino pin 10
-#define TX 11  // RX of esp8266 in connected with Arduino pin 11
-
-
 SSD1306 oled;
 MAX30102 sensor;
 Pulse pulseIR;
 Pulse pulseRed;
 MAFilter bpm;
 
-
-String WIFI_SSID = "";          // WIFI NAME
-String WIFI_PASS = "";  // WIFI PASSWORD
-String API = "************";    // Write API KEY
-String HOST = "api.thingspeak.com";
-String PORT = "80";
-int countTrueCommand;
-int countTimeCommand;
-boolean found = false;
-SoftwareSerial esp8266(RX, TX);
-
 #define LED LED_BUILTIN
 #define BUTTON 3
 #define OPTIONS 7
-
-
-
-
-
 
 static const uint8_t heart_bits[] PROGMEM = { 0x00, 0x00, 0x38, 0x38, 0x7c, 0x7c, 0xfe, 0xfe, 0xfe, 0xff,
                                               0xfe, 0xff, 0xfc, 0x7f, 0xf8, 0x3f, 0xf0, 0x1f, 0xe0, 0x0f,
@@ -60,8 +40,6 @@ const uint8_t spo2_table[184] PROGMEM = { 95, 95, 95, 96, 96, 96, 97, 97, 97, 97
                                           49, 48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, 31, 30, 29,
                                           28, 27, 26, 25, 23, 22, 21, 20, 19, 17, 16, 15, 14, 12, 11, 10, 9, 7, 6, 5,
                                           3, 2, 1 };
-
-
 
 int getVCC() {
 //reads internal 1V1 reference against VCC
@@ -98,7 +76,7 @@ void print_digit(int x, int y, long val, char c = ' ', uint8_t field = 3, const 
 
 
 /*
- *   Record, scale  and display PPG Wavefoem
+ *   Record, scale  and display PPG Waveform
  */
 const uint8_t MAXWAVE = 72;
 
@@ -181,8 +159,6 @@ void checkbutton() {
   pcflag = 0;
 }
 
-
-
 void Display_5() {
   if (pcflag && !digitalRead(BUTTON)) {
     draw_oled(5);
@@ -242,7 +218,6 @@ void draw_oled(int msg) {
       case 3:
         oled.drawStr(30, 9, F("Hello from"), 1);
         oled.drawStr(30, 20, F("Group 19"), 1);
-        //oled.drawXBMP(6,8,16,16,heart_bits);
 
         break;
       case 4:
@@ -263,13 +238,6 @@ void draw_oled(int msg) {
 
 void setup(void) {
   Serial.begin(115200);
-
-  esp8266.begin(115200);
-  sendCommand("AT", 5, "OK");
-  sendCommand("AT+CWMODE=1", 5, "OK");
-  sendCommand("AT+CWJAP=\"" + WIFI_SSID + "\",\"" + WIFI_PASS + "\"", 20, "OK");
-
-
   pinMode(LED, OUTPUT);
   pinMode(BUTTON, INPUT_PULLUP);
   filter_for_graph = EEPROM.read(OPTIONS);
@@ -290,11 +258,12 @@ void setup(void) {
 long lastBeat = 0;     //Time of the last beat
 long displaytime = 0;  //Time of the last display update
 bool led_on = false;
-unsigned long lastFetchTime = 0;
 
 
 void loop() {
-
+  run();
+}
+void run() {
   sensor.check();
   long now = millis();  //start time of this cycle
   if (!sensor.available()) return;
@@ -313,6 +282,7 @@ void loop() {
       sleep_counter = 0;
     }
   } else {
+
     sleep_counter = 0;
     // remove DC element
     int16_t IR_signal, Red_signal;
@@ -346,6 +316,7 @@ void loop() {
       // from table
       if ((RX100 >= 0) && (RX100 < 184))
         SPO2 = pgm_read_byte_near(&spo2_table[RX100]);
+      fetchData();
     }
     // update display every 50 ms if fingerdown
     if (now - displaytime > 50) {
@@ -360,69 +331,9 @@ void loop() {
     digitalWrite(LED, LOW);
     led_on = false;
   }
-
-
-  if (now - lastFetchTime >= 5000) {
-    lastFetchTime = now;
-    fetchData();
-  }
 }
-
-
 
 void fetchData() {
-  // Gather the data you want to send
-  int bpmValue = beatAvg;  // Example value, replace with actual reading
-  int spo2Value = SPO2;    // Example value, replace with actual reading
-  // int spo2fValue = SPO2f;   // Example value, replace with actual reading
-  Serial.println(bpmValue);
-  Serial.println(spo2Value);
-
-  // Send the data to ThingSpeak
-  sendDataToThingSpeak(bpmValue, spo2Value);
-}
-
-
-
-void sendCommand(String command, int maxTime, char readReplay[]) {
-  Serial.print(countTrueCommand);
-  Serial.print(". at command => ");
-  Serial.print(command);
-  Serial.print(" ");
-  while (countTimeCommand < (maxTime * 1)) {
-    esp8266.println(command);      //at+cipsend
-    if (esp8266.find(readReplay))  //ok
-    {
-      found = true;
-      break;
-    }
-    countTimeCommand++;
-  }
-  if (found == true) {
-    Serial.println("OK");
-    countTrueCommand++;
-    countTimeCommand = 0;
-  }
-  if (found == false) {
-    Serial.println("Fail");
-    countTrueCommand = 0;
-    countTimeCommand = 0;
-  }
-  found = true;
-}
-
-
-void sendDataToThingSpeak(int bpm, int spo2) {
-  // Create the GET request with data
-  String getData = "GET /update?api_key=" + API + "&field1=" + bpm + "&field2=" + spo2;
-
-
-  sendCommand("AT+CIPMUX=1", 5, "OK");
-  sendCommand("AT+CIPSTART=0,\"TCP\",\"" + HOST + "\"," + PORT, 15, "OK");
-  sendCommand("AT+CIPSEND=0," + String(getData.length() + 4), 4, ">");
-  esp8266.println(getData);
-  delay(1500);
-  countTrueCommand++;
-  sendCommand("AT+CIPCLOSE=0", 5, "OK");
-  delay(1000);
+  Serial.println(beatAvg);
+  Serial.println(SPO2);
 }
